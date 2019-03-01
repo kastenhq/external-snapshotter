@@ -443,8 +443,10 @@ func getSnapshotStatusForLogging(snapshot *crdv1.VolumeSnapshot) string {
 func IsSnapshotBound(snapshot *crdv1.VolumeSnapshot, content *crdv1.VolumeSnapshotContent) bool {
 	if content.Spec.VolumeSnapshotRef != nil && content.Spec.VolumeSnapshotRef.Name == snapshot.Name &&
 		content.Spec.VolumeSnapshotRef.UID == snapshot.UID {
+		glog.V(5).Infof("Snapshotbound: %t", true)
 		return true
 	}
+	glog.V(5).Infof("Snapshotbound: %t", false)
 	return false
 }
 
@@ -559,21 +561,33 @@ func (ctrl *csiSnapshotController) checkandUpdateBoundSnapshotStatusOperation(sn
 	var timestamp int64 = 0
 	var size int64 = 0
 	var readyToUse bool = false
-	class, volume, _, snapshotterCredentials, err := ctrl.getCreateSnapshotInput(snapshot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get input parameters to create snapshot %s: %q", snapshot.Name, err)
-	}
-	driverName, snapshotID, timestamp, size, readyToUse, err := ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
-	if err != nil {
-		glog.Errorf("checkandUpdateBoundSnapshotStatusOperation: failed to call create snapshot to check whether the snapshot is ready to use %q", err)
-		return nil, err
+
+	if snapshot.Spec.Source == nil {
+		glog.V(5).Infof("checkandUpdateBoundSnapshotStatusOperation: source is empty for Volumesnapshot [%s]", snapshot.Name)
+		readyToUse, timestamp, size, err = ctrl.handler.GetSnapshotStatus(content)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get snapshot status: %v", err)
+		}
 	} else {
-		glog.V(5).Infof("checkandUpdateBoundSnapshotStatusOperation: driver %s, snapshotId %s, timestamp %d, size %d, readyToUse %t", driverName, snapshotID, timestamp, size, readyToUse)
+		class, volume, _, snapshotterCredentials, err := ctrl.getCreateSnapshotInput(snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get input parameters to create snapshot %s: %q", snapshot.Name, err)
+		}
+		var driverName string
+		var snapshotID string
+		driverName, snapshotID, timestamp, size, readyToUse, err = ctrl.handler.CreateSnapshot(snapshot, volume, class.Parameters, snapshotterCredentials)
+		if err != nil {
+			glog.Errorf("checkandUpdateBoundSnapshotStatusOperation: failed to call create snapshot to check whether the snapshot is ready to use %q", err)
+			return nil, err
+		} else {
+			glog.V(5).Infof("checkandUpdateBoundSnapshotStatusOperation: driver %s, snapshotId %s, timestamp %d, size %d, readyToUse %t", driverName, snapshotID, timestamp, size, readyToUse)
+		}
 	}
 
 	if timestamp == 0 {
 		timestamp = time.Now().UnixNano()
 	}
+	glog.V(5).Infof("ReadyToUse: %t", readyToUse)
 	newSnapshot, err := ctrl.updateSnapshotStatus(snapshot, readyToUse, timestamp, size, IsSnapshotBound(snapshot, content))
 	if err != nil {
 		return nil, err
