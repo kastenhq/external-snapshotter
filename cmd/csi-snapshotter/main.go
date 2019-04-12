@@ -51,7 +51,7 @@ const (
 	threads = 10
 
 	// Default timeout of short CSI calls like GetPluginInfo
-	csiTimeout = time.Second
+	csiTimeout = time.Minute
 )
 
 // Command line flags
@@ -191,7 +191,7 @@ func main() {
 		*createSnapshotContentRetryCount,
 		*createSnapshotContentInterval,
 		snapShotter,
-		*connectionTimeout,
+		csiTimeout,
 		*resyncPeriod,
 		*snapshotNamePrefix,
 		*snapshotNameUUIDLength,
